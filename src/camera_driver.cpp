@@ -35,6 +35,7 @@ static rcl_interfaces::msg::ParameterDescriptor make_desc(
   desc.name = name;
   desc.type = type;
   desc.description = name;
+  desc.dynamic_typing = true;
   return (desc);
 }
 

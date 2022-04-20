@@ -522,27 +522,7 @@ bool CameraDriver::start()
   cameraInfoMsg_.header.frame_id = frameId_;
   metaMsg_.header.frame_id = frameId_;
 
-  rmw_qos_profile_t qosProf = rmw_qos_profile_default;
-  qosProf.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
-  qosProf.depth = qosDepth_;  // keep at most this number of images
-
-  qosProf.reliability = RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
-  //qosProf.reliability = RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT;
-
-  //qosProf.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
-  //qosProf.durability = RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT;
-  qosProf.durability =
-    RMW_QOS_POLICY_DURABILITY_VOLATILE;  // sender does not have to store
-  qosProf.deadline.sec = 5;              // max expect time between msgs pub
-  qosProf.deadline.nsec = 0;
-
-  qosProf.lifespan.sec = 1;  // how long until msg are considered expired
-  qosProf.lifespan.nsec = 0;
-
-  qosProf.liveliness_lease_duration.sec = 10;  // time to declare client dead
-  qosProf.liveliness_lease_duration.nsec = 0;
-
-  pub_ = image_transport::create_camera_publisher(this, "~/image_raw", qosProf);
+  pub_ = image_transport::create_camera_publisher(this, "~/image_raw", rmw_qos_profile_sensor_data);
   driver_ = std::make_shared<flir_spinnaker_common::Driver>();
   driver_->setDebug(debug_);
   driver_->setComputeBrightness(computeBrightness_);

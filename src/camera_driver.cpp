@@ -23,6 +23,7 @@
 #include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/fill_image.hpp>
 #include <sensor_msgs/image_encodings.hpp>
+#include <cv_bridge/cv_bridge.h>
 
 #include "logging.h"
 
@@ -48,6 +49,20 @@ static std::pair<bool, double> get_double_int_param(const rclcpp::Parameter & p)
   }
   if (p.get_type() == rclcpp::PARAMETER_INTEGER) {
     bd.second = (double)p.as_int();
+    bd.first = true;
+  }
+  return (bd);
+}
+
+static std::pair<bool, int> get_int_param(const rclcpp::Parameter & p)
+{
+  std::pair<bool, int> bd(false, 0);
+  if (p.get_type() == rclcpp::PARAMETER_DOUBLE) {
+    bd.second = (int)p.as_double();
+    bd.first = true;
+  }
+  if (p.get_type() == rclcpp::PARAMETER_INTEGER) {
+    bd.second = p.as_int();
     bd.first = true;
   }
   return (bd);
@@ -135,15 +150,16 @@ bool CameraDriver::stopCamera()
 void CameraDriver::printStatus()
 {
   if (driver_) {
-    const double dropRate = (publishedCount_ > 0) ?
-      ((double)droppedCount_ / (double)publishedCount_) : 0;
+    const double dropRate =
+      (publishedCount_ > 0) ? ((double)droppedCount_ / (double)publishedCount_)
+                            : 0;
     const rclcpp::Time t = now();
     const rclcpp::Duration dt = t - lastStatusTime_;
     double dtns = std::max(dt.nanoseconds(), (int64_t)1);
     double outRate = publishedCount_ * 1e9 / dtns;
     LOG_INFO(
       "frame rate in: " << driver_->getReceiveFrameRate() << " Hz, out:"
-      << outRate << " Hz, drop: " << dropRate * 100 << "%");
+                        << outRate << " Hz, drop: " << dropRate * 100 << "%");
     lastStatusTime_ = t;
     droppedCount_ = 0;
     publishedCount_ = 0;
@@ -156,6 +172,7 @@ void CameraDriver::readParameters()
 {
   serial_ = this->declare_parameter<std::string>(
     "serial_number", "missing_serial_number");
+  ros_pixel_format_ = this->declare_parameter<std::string>("ros_pixel_format", "bgr8");
   try {
     debug_ = this->declare_parameter(
       "debug", false,
@@ -263,6 +280,23 @@ bool CameraDriver::setDouble(const std::string & nodeName, double v)
   return (status);
 }
 
+bool CameraDriver::setInt(const std::string & nodeName, int v)
+{
+  LOG_INFO("setting " << nodeName << " to: " << v);
+  int retV;  // what actually was set
+  std::string msg = driver_->setInt(nodeName, v, &retV);
+  bool status(true);
+  if (msg != "OK") {
+    LOG_WARN("setting " << nodeName << " failed: " << msg);
+    status = false;
+  }
+  if (retV != v) {
+    LOG_WARN(nodeName << " set to: " << retV << " instead of: " << v);
+    status = false;
+  }
+  return (status);
+}
+
 bool CameraDriver::setBool(const std::string & nodeName, bool v)
 {
   LOG_INFO("setting " << nodeName << " to: " << v);
@@ -306,6 +340,15 @@ void CameraDriver::setParameter(
         setBool(ni.name, bb.second);
       } else {
         LOG_WARN("bad non-bool " << p.get_name() << " type: " << p.get_type());
+      }
+      break;
+    }
+    case NodeInfo::INT: {
+      auto bb = get_int_param(p);
+      if (bb.first) {
+        setInt(ni.name, bb.second);
+      } else {
+        LOG_WARN("bad non-int " << p.get_name() << " type: " << p.get_type());
       }
       break;
     }
@@ -427,20 +470,35 @@ void CameraDriver::run()
   }
 }
 
-static std::string flir_to_ros_encoding(
-  const flir_spinnaker_common::pixel_format::PixelFormat & pf)
+static std::string flir_to_ros_encoding(const std::string & pixel_format_str)
 {
-  switch (pf) {
-    case flir_spinnaker_common::pixel_format::BayerRG8:
-      return (sensor_msgs::image_encodings::BAYER_RGGB8);
-      break;
-    case flir_spinnaker_common::pixel_format::Mono8:
-      return (sensor_msgs::image_encodings::MONO8);
-      break;
-    case flir_spinnaker_common::pixel_format::INVALID:
-    default:
-      return ("INVALID");
-  }
+  std::string image_encoding = sensor_msgs::image_encodings::MONO8;
+  if (pixel_format_str == "BayerRG8")
+    image_encoding = sensor_msgs::image_encodings::BAYER_RGGB8;
+  else if (pixel_format_str == "BayerGR8")
+    image_encoding = sensor_msgs::image_encodings::BAYER_GRBG8;
+  else if (pixel_format_str == "BayerGB8")
+    image_encoding = sensor_msgs::image_encodings::BAYER_GBRG8;
+  else if (pixel_format_str == "BayerBG8")
+    image_encoding = sensor_msgs::image_encodings::BAYER_BGGR8;
+  else if (pixel_format_str == "BayerRG16")
+    image_encoding = sensor_msgs::image_encodings::BAYER_RGGB16;
+  else if (pixel_format_str == "BayerGR16")
+    image_encoding = sensor_msgs::image_encodings::BAYER_GRBG16;
+  else if (pixel_format_str == "BayerGB16")
+    image_encoding = sensor_msgs::image_encodings::BAYER_GBRG16;
+  else if (pixel_format_str == "BayerBG16")
+    image_encoding = sensor_msgs::image_encodings::BAYER_BGGR16;
+else if (pixel_format_str == "Mono8")
+    image_encoding = sensor_msgs::image_encodings::MONO8;
+else if (pixel_format_str == "Mono16")
+    image_encoding = sensor_msgs::image_encodings::MONO16;
+else if (pixel_format_str == "RGB8Packed")
+    image_encoding = sensor_msgs::image_encodings::RGB8;
+    else
+    throw std::runtime_error("Got unrecognized pixel format: " + pixel_format_str + ". Cannot generate encoding.");
+
+  return image_encoding;
 }
 
 void CameraDriver::doPublish(const ImageConstPtr & im)
@@ -450,9 +508,9 @@ void CameraDriver::doPublish(const ImageConstPtr & im)
   imageMsg_.header.stamp = t;
   cameraInfoMsg_.header.stamp = t;
 
-  const std::string encoding = flir_to_ros_encoding(im->pixelFormat_);
+  const std::string encoding = flir_to_ros_encoding(driver_->getPixelFormat());
 
-  if (pub_.getNumSubscribers() > 0 || alwaysPublish_) {
+	if (pub_.getNumSubscribers() > 0 || alwaysPublish_) {
     sensor_msgs::msg::CameraInfo::UniquePtr
       cinfo(new sensor_msgs::msg::CameraInfo(cameraInfoMsg_));
     // will make deep copy. Do we need to? Probably...
@@ -462,21 +520,31 @@ void CameraDriver::doPublish(const ImageConstPtr & im)
     if (!ret) {
       LOG_ERROR("fill image failed!");
     } else {
+
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvCopy(*img, ros_pixel_format_);
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "cv_bridge exception: %s", e.what());
+        return;
+    }
+
       //const auto t0 = this->now();
-      pub_.publish(std::move(img), std::move(cinfo));
+      pub_.publish(std::move(cv_ptr->toImageMsg()), std::move(cinfo));
       //const auto t1 = this->now();
       //std::cout << "dt: " << (t1 - t0).nanoseconds() * 1e-9 << std::endl;
       publishedCount_++;
     }
-  }
+}
+
   if (metaPub_->get_subscription_count() != 0 || alwaysPublish_) {
-      metaMsg_.header.stamp = t;
-      metaMsg_.brightness = im->brightness_;
-      metaMsg_.exposure_time = im->exposureTime_;
-      metaMsg_.max_exposure_time = im->maxExposureTime_;
-      metaMsg_.gain = im->gain_;
-      metaMsg_.camera_time = im->imageTime_;
-      metaPub_->publish(metaMsg_);
+    metaMsg_.header.stamp = t;
+    metaMsg_.brightness = im->brightness_;
+    metaMsg_.exposure_time = im->exposureTime_;
+    metaMsg_.max_exposure_time = im->maxExposureTime_;
+    metaMsg_.gain = im->gain_;
+    metaMsg_.camera_time = im->imageTime_;
+    metaPub_->publish(metaMsg_);
   }
 }
 
@@ -522,7 +590,8 @@ bool CameraDriver::start()
   cameraInfoMsg_.header.frame_id = frameId_;
   metaMsg_.header.frame_id = frameId_;
 
-  pub_ = image_transport::create_camera_publisher(this, "~/image_raw", rmw_qos_profile_sensor_data);
+  pub_ = image_transport::create_camera_publisher(
+    this, "~/image_raw", rmw_qos_profile_sensor_data);
   driver_ = std::make_shared<flir_spinnaker_common::Driver>();
   driver_->setDebug(debug_);
   driver_->setComputeBrightness(computeBrightness_);

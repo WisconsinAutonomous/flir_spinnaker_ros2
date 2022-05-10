@@ -15,6 +15,7 @@
   <depend>image_transport</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
   <depend>camera_info_manager</depend>
   <depend>flir_spinnaker_common</depend>
   <depend>image_meta_msgs_ros2</depend>

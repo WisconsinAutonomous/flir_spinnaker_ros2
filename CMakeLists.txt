@@ -25,6 +25,7 @@ set(ROS2_DEPENDENCIES
   "rclcpp_components"
   "sensor_msgs"
   "std_msgs"
+  "cv_bridge"
   "camera_info_manager"
   "image_transport"
   "flir_spinnaker_common"

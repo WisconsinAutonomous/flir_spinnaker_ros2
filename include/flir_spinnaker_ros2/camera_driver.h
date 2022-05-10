@@ -61,6 +61,7 @@ private:
   void createCameraParameters();
   void setParameter(const NodeInfo & ni, const rclcpp::Parameter & p);
   bool setEnum(const std::string & nodeName, const std::string & v = "");
+  bool setInt(const std::string & nodeName, int v);
   bool setDouble(const std::string & nodeName, double v);
   bool setBool(const std::string & nodeName, bool v);
   bool readParameterFile();
@@ -79,6 +80,7 @@ private:
   rclcpp::Publisher<image_meta_msgs_ros2::msg::ImageMetaData>::SharedPtr
     metaPub_;
   std::string serial_;
+  std::string ros_pixel_format_;
   std::string cameraInfoURL_;
   std::string frameId_;
   std::string parameterFile_;
